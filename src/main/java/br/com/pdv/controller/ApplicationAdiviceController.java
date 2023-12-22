@@ -1,6 +1,7 @@
 package br.com.pdv.controller;
 
 import br.com.pdv.dto.ResponseDTO;
+import br.com.pdv.exceptions.IdInvalidException;
 import br.com.pdv.exceptions.InvalidOperationException;
 import br.com.pdv.exceptions.NoItemException;
 import br.com.pdv.exceptions.PasswordNotFoundException;
@@ -15,7 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @RestControllerAdvice
-public class ApplicationAdviceController {
+public class ApplicationAdiviceController {
 
     @ExceptionHandler(NoItemException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
@@ -41,6 +42,12 @@ public class ApplicationAdviceController {
         return new ResponseDTO(ex.getMessage());
     }
 
+    @ExceptionHandler(IdInvalidException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ResponseDTO handlePasswordNotFoundException(IdInvalidException ex) {
+        return new ResponseDTO(ex.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ResponseDTO handleValidationException(MethodArgumentNotValidException ex) {
@@ -51,5 +58,11 @@ public class ApplicationAdviceController {
         });
 
         return new ResponseDTO(errors);
+    }
+
+    @ExceptionHandler(Exception.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public ResponseDTO handleException(Exception ex) {
+        return new ResponseDTO(ex.getMessage());
     }
 }

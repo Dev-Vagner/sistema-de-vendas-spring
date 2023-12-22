@@ -1,25 +1,35 @@
 package br.com.pdv.service;
 
-import br.com.pdv.dto.UserRequestDTO;
+import br.com.pdv.dto.LoginDTO;
+import br.com.pdv.dto.UserCreateRequestDTO;
+import br.com.pdv.dto.UserEditRequestDTO;
 import br.com.pdv.dto.UserResponseDTO;
 import br.com.pdv.entity.User;
+import br.com.pdv.entity.UserRole;
+import br.com.pdv.exceptions.IdInvalidException;
+import br.com.pdv.exceptions.InvalidOperationException;
 import br.com.pdv.exceptions.NoItemException;
+import br.com.pdv.exceptions.PasswordNotFoundException;
 import br.com.pdv.repository.UserRepository;
 import br.com.pdv.security.SecurityConfig;
-import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static org.springframework.jdbc.support.JdbcUtils.isNumeric;
+
 @Service
-@RequiredArgsConstructor
 public class UserService {
 
-    private final UserRepository userRepository;
+    @Autowired
+    private UserRepository userRepository;
     private ModelMapper mapper = new ModelMapper();
 
     public List<UserResponseDTO> findAll() {
@@ -27,6 +37,10 @@ public class UserService {
     }
 
     public UserResponseDTO findById(Long id) {
+        if(verifyUserRoleLoggedUser()) {
+            verifyIdUserLogged(id);
+        };
+
         Optional<User> userValidated = validateById(id);
         if(userValidated.isPresent()) {
             User user = userValidated.get();
@@ -36,47 +50,86 @@ public class UserService {
         }
     }
 
-    public UserResponseDTO save(UserRequestDTO userRequestDTO) {
-        userRequestDTO.setPassword(SecurityConfig.passwordEncoder().encode(userRequestDTO.getPassword()));
-        userRequestDTO.setIsEnabled(true);
-        User userToSave = mapper.map(userRequestDTO, User.class);
+    public UserResponseDTO save(UserCreateRequestDTO userCreateRequestDTO) {
+        verifyUsernameNotExistent(userCreateRequestDTO.getUsername());
+
+        userCreateRequestDTO.setPassword(SecurityConfig.passwordEncoder().encode(userCreateRequestDTO.getPassword()));
+        userCreateRequestDTO.setIsEnabled(true);
+        User userToSave = mapper.map(userCreateRequestDTO, User.class);
+
         User userRegistered = userRepository.save(userToSave);
 
         return createUserResponseDTO(userRegistered);
     }
 
 
-    public UserResponseDTO edit(UserRequestDTO userRequestDTO) {
-        Optional<User> userValidated = validateById(userRequestDTO.getId());
-        if (userValidated.isEmpty()) {
-            throw new NoItemException("O ID do usuário é inválido!");
+    public UserResponseDTO edit(UserEditRequestDTO userEditRequestDTO) {
+        verifyIdUserLogged(userEditRequestDTO.getId());
+
+        String usernameLogged = getUsernameLogged();
+
+        if(!Objects.equals(userEditRequestDTO.getUsername(), usernameLogged)) {
+            verifyUsernameNotExistent(userEditRequestDTO.getUsername());
         }
 
-        userRequestDTO.setPassword(SecurityConfig.passwordEncoder().encode(userRequestDTO.getPassword()));
-        User userToSave = mapper.map(userRequestDTO, User.class);
+        userEditRequestDTO.setPassword(SecurityConfig.passwordEncoder().encode(userEditRequestDTO.getPassword()));
+        User userToSave = mapper.map(userEditRequestDTO, User.class);
         User userUpdated = userRepository.save(userToSave);
 
         return createUserResponseDTO(userUpdated);
     }
 
     public void deleteById(Long id) {
-        Optional<User> userValidated = validateById(id);
-        if (userValidated.isPresent()) {
-            userRepository.deleteById(id);
-        } else {
-            throw new NoItemException("O ID do usuário é inválido!");
-        }
+        verifyIdUserLogged(id);
+        userRepository.deleteById(id);
     }
 
     public User getByUsername(String username) {
-        User user = userRepository.findUserByUsername(username);
+        User user = userRepository.findByUsername(username);
         if(user == null) {
             throw new UsernameNotFoundException("Login inválido!");
         }
         return user;
     }
 
-    private Optional<User> validateById(Long id) {
+    public void verifyUserCredentials(LoginDTO loginDTO) {
+        User user = getByUsername(loginDTO.getUsername());
+
+        boolean correctPassword = SecurityConfig.passwordEncoder()
+                .matches(loginDTO.getPassword(), user.getPassword());
+        if(!correctPassword) {
+            throw new PasswordNotFoundException("Senha inválida!");
+        }
+    }
+
+    private void verifyUsernameNotExistent(String username) {
+        User user = userRepository.findByUsername(username);
+        if(user != null) {
+            throw new InvalidOperationException("Nome de usuário já cadastrado!");
+        }
+    }
+
+    public void verifyIdUserLogged(Long id) {
+        User user = getByUsername(getUsernameLogged());
+        if(user.getId() != id) {
+            throw new IdInvalidException("O ID enviado é diferente do ID do usuário logado!");
+        }
+    }
+
+    public Boolean verifyUserRoleLoggedUser() {
+        User userLogged = getByUsername(getUsernameLogged());
+        if(userLogged.getRole().equals(UserRole.USER)) return true;
+        return false;
+    }
+
+    public String getUsernameLogged() {
+        return SecurityContextHolder.getContext().getAuthentication().getName();
+    }
+
+    public User getUserLogged() {
+        return getByUsername(getUsernameLogged());
+    }
+    public Optional<User> validateById(Long id) {
         return userRepository.findById(id);
     }
 
@@ -86,6 +139,7 @@ public class UserService {
         userResponseDTO.setId(user.getId());
         userResponseDTO.setName(user.getName());
         userResponseDTO.setUsername(user.getUsername());
+        userResponseDTO.setRole(user.getRole().toString().toLowerCase());
         userResponseDTO.setIsEnabled(user.getIsEnabled());
 
         return userResponseDTO;

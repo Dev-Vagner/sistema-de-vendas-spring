@@ -4,39 +4,66 @@ import br.com.pdv.dto.ProductSaleDTO;
 import br.com.pdv.dto.ProductInfoDTO;
 import br.com.pdv.dto.SaleDTO;
 import br.com.pdv.dto.SaleInfoDTO;
-import br.com.pdv.entity.ItemSale;
-import br.com.pdv.entity.Product;
-import br.com.pdv.entity.Sale;
-import br.com.pdv.entity.User;
+import br.com.pdv.entity.*;
+import br.com.pdv.exceptions.IdInvalidException;
 import br.com.pdv.exceptions.InvalidOperationException;
 import br.com.pdv.exceptions.NoItemException;
 import br.com.pdv.repository.ItemSaleRepository;
 import br.com.pdv.repository.ProductRepository;
 import br.com.pdv.repository.SaleRepository;
 import br.com.pdv.repository.UserRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import javax.transaction.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 
 @Service
-@RequiredArgsConstructor
 public class SaleService {
 
-    private final UserRepository userRepository;
-    private final ProductRepository productRepository;
-    private final SaleRepository saleRepository;
-    private final ItemSaleRepository itemSaleRepository;
+    @Autowired
+    private UserService userService;
+    @Autowired
+    private UserRepository userRepository;
+    @Autowired
+    private ProductRepository productRepository;
+    @Autowired
+    private SaleRepository saleRepository;
+    @Autowired
+    private ItemSaleRepository itemSaleRepository;
 
     public List<SaleInfoDTO> findAll() {
         return saleRepository.findAll().stream().map(sale -> getSaleInfo(sale)).collect(Collectors.toList());
+    }
+
+    public List<SaleInfoDTO> findAllByUser(Long id) {
+        Optional<User> userValidate = userService.validateById(id);
+        if(userValidate.isEmpty()) {
+            throw new InvalidOperationException("Usuário não encontrado!");
+        }
+
+        User userLogged = userService.getUserLogged();
+        if(userLogged.getRole().equals(UserRole.USER) && userLogged.getId() != id) {
+            throw new IdInvalidException("Você não tem permissão para acessar as vendas deste usuário!");
+        }
+
+        List<Sale> sales = saleRepository.findAllByUser(userValidate.get());
+
+        List<SaleInfoDTO> saleInfoDTOList = new ArrayList<>();
+        for(Sale sale : sales) {
+            saleInfoDTOList.add(getSaleInfo(sale));
+        }
+
+        return saleInfoDTOList;
     }
 
     private SaleInfoDTO getSaleInfo(Sale sale) {
@@ -80,13 +107,15 @@ public class SaleService {
 
     @Transactional
     public Long save(SaleDTO sale) {
-        User user = userRepository.findById(sale.getUserId())
-                .orElseThrow(() -> new NoItemException("Usuário não encontrado!"));
+        User userLogged = userService.getUserLogged();
+        if(userLogged.getId() != sale.getUserId()) {
+            throw new IdInvalidException("Você está usando um ID diferente do ID do usuário logado!");
+        }
 
         List<ItemSale> items = getItemSale(sale.getItems());
 
         Sale newSale = new Sale();
-        newSale.setUser(user);
+        newSale.setUser(userLogged);
         newSale.setDate(LocalDate.now());
         newSale.setItems(items);
 
@@ -148,6 +177,14 @@ public class SaleService {
     public SaleInfoDTO getById(Long id) {
         Sale sale = saleRepository.findById(id)
                 .orElseThrow(() -> new NoItemException("Venda não encontrada!"));
+
+        User userLogged = userService.getUserLogged();
+        User userSale = sale.getUser();
+
+        if(userLogged.getRole() == UserRole.USER && userSale.getId() != userLogged.getId()) {
+            throw new IdInvalidException("Você não tem permissão para acessar os dados dessa venda!");
+        }
+
         return getSaleInfo(sale);
     }
 }

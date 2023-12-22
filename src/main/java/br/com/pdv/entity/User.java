@@ -2,7 +2,8 @@ package br.com.pdv.entity;
 
 import lombok.*;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
+
 import java.util.List;
 
 @Data
@@ -25,6 +26,10 @@ public class User {
     @Column(length = 60, nullable = false)
     private String password;
 
+    @Column(length = 30, nullable = false)
+    private UserRole role;
+
+    @Column(nullable = false)
     private Boolean isEnabled;
 
     @OneToMany(mappedBy = "user")

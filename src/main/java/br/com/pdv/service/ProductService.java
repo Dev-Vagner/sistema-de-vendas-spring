@@ -6,6 +6,7 @@ import br.com.pdv.exceptions.NoItemException;
 import br.com.pdv.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -13,9 +14,10 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 public class ProductService {
-    private final ProductRepository productRepository;
+
+    @Autowired
+    private ProductRepository productRepository;
     private ModelMapper mapper = new ModelMapper();
 
     public List<ProductDTO> findAll() {
